@@ -1,0 +1,91 @@
+#include <ESP8266WiFi.h>
+#include <ThingSpeak.h>
+#include <Ultrasonic.h>
+
+const int trigPin = D1;  // Trigger pin of ultrasonic sensor
+const int echoPin = D2;  // Echo pin of ultrasonic sensor
+const int motorPin = D8; // Pin connected to the motor
+
+int waterlevel = 0;
+
+const char *ssid = ".  ";          // enter your WiFi name
+const char *password = ".   ";  // enter your WiFi password
+const char *apiKey = ".    "; // ThingSpeak Write API Key
+unsigned long channelID = 3144590;    // Your ThingSpeak channel ID
+
+Ultrasonic ultrasonic(trigPin, echoPin);
+WiFiClient client;
+
+void setup() {
+  Serial.begin(115200);
+  
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  pinMode(motorPin, OUTPUT);
+  digitalWrite(motorPin, LOW); // Motor initially OFF
+
+  // Connect to Wi-Fi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(100);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+
+  ThingSpeak.begin(client);
+}
+
+void loop() {
+  int distance = ultrasonic.read(CM); // read ultrasonic data in CM
+  Serial.print("Distance: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+
+  // Water level mapping
+  switch (distance) {
+    case 0: case 1: case 2: case 3: case 4: case 5:
+      waterlevel = 100; break;
+    case 6:
+      waterlevel = 80; break;
+    case 7:
+      waterlevel = 60; break;
+    case 8:
+      waterlevel = 40; break;
+    case 9:
+      waterlevel = 20; break;
+    case 10:
+      waterlevel = 0; break;
+    default:
+      waterlevel = 0; break;
+  }
+
+  // Motor control logic
+  if (distance < 5) {
+    digitalWrite(motorPin, LOW); // Motor OFF
+  }
+  else if (distance > 10) {
+    digitalWrite(motorPin, HIGH); // Motor ON
+  }
+
+  Serial.print("Water Level: ");
+  Serial.print(waterlevel);
+  Serial.println("%");
+
+  if (digitalRead(motorPin) == HIGH) {
+    Serial.println("Motor is ON");
+  } else {
+    Serial.println("Motor is OFF");
+  }
+
+  // --- Update ThingSpeak with only water level (%) ---
+  int updateStatus = ThingSpeak.writeField(channelID, 1, waterlevel, apiKey);
+  
+  if (updateStatus == 200) {
+    Serial.println("ThingSpeak update successful!");
+  } else {
+    Serial.println("ThingSpeak update failed!");
+  }
+
+  // ThingSpeak recommends at least a 15-second delay between updates
+  delay(5000);
+}
